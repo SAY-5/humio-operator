@@ -3811,6 +3811,11 @@ func (r *HumioClusterReconciler) constructPDB(hc *humiov1alpha1.HumioCluster, hn
 		},
 	}
 
+	if pdbSpec.UnhealthyPodEvictionPolicy != nil {
+		policy := policyv1.UnhealthyPodEvictionPolicyType(*pdbSpec.UnhealthyPodEvictionPolicy)
+		pdb.Spec.UnhealthyPodEvictionPolicy = &policy
+	}
+
 	return pdb
 }
 
@@ -3834,6 +3839,7 @@ func (r *HumioClusterReconciler) createOrUpdatePDB(ctx context.Context, hc *humi
 		existing.Spec.Selector = desired.Spec.Selector
 		existing.Spec.MinAvailable = desired.Spec.MinAvailable
 		existing.Spec.MaxUnavailable = desired.Spec.MaxUnavailable
+		existing.Spec.UnhealthyPodEvictionPolicy = desired.Spec.UnhealthyPodEvictionPolicy
 		return nil
 	})
 	if err != nil {

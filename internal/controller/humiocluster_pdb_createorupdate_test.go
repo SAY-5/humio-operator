@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 	humiov1alpha1 "github.com/humio/humio-operator/api/v1alpha1"
+	"github.com/humio/humio-operator/internal/helpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	policyv1 "k8s.io/api/policy/v1"
@@ -96,6 +97,33 @@ func TestCreateOrUpdatePDB_TwoVariablePattern(t *testing.T) {
 		assert.Equal(t, &newMax, live.Spec.MaxUnavailable)
 	})
 
+	t.Run("update applies unhealthyPodEvictionPolicy", func(t *testing.T) {
+		hnp := &HumioNodePool{clusterName: hc.Name, namespace: hc.Namespace, state: "Running"}
+		oldMin := intstr.FromInt32(1)
+		existingPDB := &policyv1.PodDisruptionBudget{
+			ObjectMeta: metav1.ObjectMeta{Name: hnp.GetPodDisruptionBudgetName(), Namespace: "default"},
+			Spec:       policyv1.PodDisruptionBudgetSpec{MinAvailable: &oldMin},
+		}
+		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPDB).Build()
+		r := &HumioClusterReconciler{
+			Client: client,
+			Log:    logr.Discard(),
+		}
+
+		desired := r.constructPDB(hc, hnp, &humiov1alpha1.HumioPodDisruptionBudgetSpec{
+			MinAvailable:               &oldMin,
+			UnhealthyPodEvictionPolicy: helpers.StringPtr("AlwaysAllow"),
+		})
+
+		op, err := r.createOrUpdatePDB(context.Background(), hc, desired)
+		require.NoError(t, err)
+		assert.Equal(t, controllerutil.OperationResultUpdated, op)
+
+		var live policyv1.PodDisruptionBudget
+		require.NoError(t, client.Get(context.Background(), types.NamespacedName{Name: existingPDB.Name, Namespace: "default"}, &live))
+		require.NotNil(t, live.Spec.UnhealthyPodEvictionPolicy)
+		assert.Equal(t, policyv1.AlwaysAllow, *live.Spec.UnhealthyPodEvictionPolicy)
+	})
 }
 
 func TestCreateOrUpdatePDB_ErrorWrapping(t *testing.T) {
